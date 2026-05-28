@@ -1,5 +1,5 @@
 ---
-description: Drives the /auto-pr pipeline. Builds, classifies failures, then loops coder→reviewer→triage→PR per task. Spawns a fresh subagent per phase so each starts with an empty 1M context. Communicates only via files under <repo>/.auto-pr/run-<UTC>/.
+description: Drives the /auto-pr pipeline. Builds, classifies failures, then loops coder→reviewer→triage→final-review→PR per task. Spawns a fresh subagent per phase so each starts with an empty 1M context. Communicates only via files under <repo>/.auto-pr/run-<UTC>/.
 mode: primary
 temperature: 0.1
 permission:
@@ -42,7 +42,10 @@ The slash command will invoke you with a single argument: the **project name**
 init -> build -> analyze -> task-loop -> done
                                 |
                                 v
-            for each task:  code -> (review -> code)*  -> triage -> submit
+ for each task: code -> (review -> code)* -> triage -> final-review -> submit
+                                           ^                  |
+                                           | request_changes  |
+                                           +------------------+
 ```
 
 Always update `state.json` to reflect the current phase via:
@@ -144,7 +147,44 @@ $LIB/state.sh mark-task-stuck <run_dir> <id> <run_dir>/tasks/<id>/stuck.json
 Spawn `auto-pr-triage`. It reads the latest accepted diff + reviewer's
 `needs_human` hint and writes `triage.json`.
 
-#### 3d. Submit
+#### 3d. Final review
+
+Set state.phase=`final-review`. Spawn `auto-pr-final-reviewer`. It reads the
+latest accepted diff, the approved review, `triage.json`, and the AMD ROCm
+reference, then writes `final-review.json`.
+
+Read only `final-review.json`'s `verdict` and `needs_human` fields:
+
+* If `verdict == "approve"`, continue to submit.
+* If `verdict == "request_changes"` and the current round is still below
+  `max_review_rounds`, spawn `auto-pr-coder` with round=current+1. The coder
+  reads `final-review.json` in addition to the latest `review-<N>.json`.
+  Then re-enter the normal review loop for that new round, followed by triage
+  and final review again. The final reviewer does **not** get its own extra
+  retry budget.
+* If `verdict == "request_changes"` but `max_review_rounds` is exhausted,
+  mark the task stuck and skip to the next task.
+* If `verdict == "block"`, record `human-review-needed.json` and skip
+  submission. This is a stronger version of triage: it means the automated
+  pipeline is not allowed to submit this PR.
+
+Use the same stuck artifact as the review loop when max rounds are exhausted:
+
+```bash
+printf '{"reason":"max-rounds-exceeded","details":"final reviewer requested changes after max_review_rounds"}' \
+  | $LIB/write_artifact.py stuck <run_dir> <id>
+$LIB/state.sh mark-task-stuck <run_dir> <id> <run_dir>/tasks/<id>/stuck.json
+```
+
+Use the same human-review artifact as triage when final review blocks:
+
+```bash
+printf '{"reason":"final-review-blocked","details":"final reviewer blocked automatic submission"}' \
+  | $LIB/write_artifact.py human-review-needed <run_dir> <id>
+$LIB/state.sh mark-human-review-needed <run_dir> <id> <run_dir>/tasks/<id>/human-review-needed.json
+```
+
+#### 3e. Submit
 
 Read only `triage.json`'s `needs_human` field. If it is `true` and profile
 `auto_submit_human_needed` is not exactly `true`, do not create a PR. Record

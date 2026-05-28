@@ -242,6 +242,62 @@ class ValidationTests(unittest.TestCase):
                 "verdict": "approve",
             })
 
+    def test_review_accepts_cross_platform_blocking_category(self) -> None:
+        validate_json.validate_review({
+            "round": 1,
+            "approved": False,
+            "verdict": "request_changes",
+            "needs_human": True,
+            "blocking": [
+                {
+                    "category": "cross-platform",
+                    "file": "paddle/phi/kernels/gpu/example_kernel.cu",
+                    "line": 42,
+                    "message": "HIP-only branch removed the CUDA behavior.",
+                }
+            ],
+            "suggestions": [],
+        })
+
+    def test_final_review_accepts_request_changes(self) -> None:
+        validate_json.validate_final_review({
+            "verdict": "request_changes",
+            "needs_human": False,
+            "concerns": [
+                {
+                    "dimension": "cross-platform",
+                    "file": "paddle/phi/kernels/gpu/example_kernel.cu",
+                    "line": 64,
+                    "message": "Preserve the CUDA path when adding the HIP fix.",
+                }
+            ],
+            "agreed_with_reviewer": False,
+            "agreed_with_triage": True,
+        })
+
+    def test_final_review_rejects_missing_fields(self) -> None:
+        with self.assertRaises(validate_json.ValidationError):
+            validate_json.validate_final_review({
+                "verdict": "approve",
+                "needs_human": False,
+                "concerns": [],
+            })
+
+    def test_final_review_rejects_approved_concerns(self) -> None:
+        with self.assertRaises(validate_json.ValidationError):
+            validate_json.validate_final_review({
+                "verdict": "approve",
+                "needs_human": False,
+                "concerns": [
+                    {
+                        "dimension": "triage",
+                        "message": "This concern must be resolved before approval.",
+                    }
+                ],
+                "agreed_with_reviewer": True,
+                "agreed_with_triage": False,
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

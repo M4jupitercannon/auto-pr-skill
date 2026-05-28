@@ -13,6 +13,20 @@ class ValidationError(ValueError):
     pass
 
 
+REVIEW_CATEGORIES = {
+    "correctness",
+    "test-coverage",
+    "regression-risk",
+    "cross-platform",
+    "build",
+    "style",
+    "security",
+    "other",
+}
+
+FINAL_REVIEW_DIMENSIONS = REVIEW_CATEGORIES | {"triage"}
+
+
 def require_keys(obj: dict[str, Any], keys: set[str], label: str) -> None:
     missing = sorted(keys - obj.keys())
     if missing:
@@ -60,10 +74,54 @@ def validate_review(data: Any) -> None:
     expect_type(data["suggestions"], list, "review.suggestions")
     for idx, item in enumerate(data["blocking"]):
         validate_issue(item, f"review.blocking[{idx}]", require_category=True)
+        if item["category"] not in REVIEW_CATEGORIES:
+            raise ValidationError(f"review.blocking[{idx}].category is unsupported")
     for idx, item in enumerate(data["suggestions"]):
         validate_issue(item, f"review.suggestions[{idx}]", require_category=False)
     if data["approved"] and (data["verdict"] != "approve" or data["blocking"]):
         raise ValidationError("approved reviews must have verdict=approve and empty blocking")
+
+
+def validate_final_review_concern(item: Any, label: str) -> None:
+    expect_type(item, dict, label)
+    allowed = {"dimension", "file", "line", "message"}
+    require_keys(item, {"dimension", "message"}, label)
+    reject_extra_keys(item, allowed, label)
+    expect_type(item["dimension"], str, f"{label}.dimension")
+    if item["dimension"] not in FINAL_REVIEW_DIMENSIONS:
+        raise ValidationError(f"{label}.dimension is unsupported")
+    expect_type(item["message"], str, f"{label}.message")
+    if item.get("file") is not None:
+        expect_type(item["file"], str, f"{label}.file")
+    if item.get("line") is not None:
+        expect_type(item["line"], int, f"{label}.line")
+
+
+def validate_final_review(data: Any) -> None:
+    expect_type(data, dict, "final_review")
+    allowed = {
+        "verdict",
+        "needs_human",
+        "concerns",
+        "agreed_with_reviewer",
+        "agreed_with_triage",
+    }
+    require_keys(data, allowed, "final_review")
+    reject_extra_keys(data, allowed, "final_review")
+    if data["verdict"] not in {"approve", "request_changes", "block"}:
+        raise ValidationError("final_review.verdict must be approve, request_changes, or block")
+    expect_type(data["needs_human"], bool, "final_review.needs_human")
+    expect_type(data["concerns"], list, "final_review.concerns")
+    expect_type(data["agreed_with_reviewer"], bool, "final_review.agreed_with_reviewer")
+    expect_type(data["agreed_with_triage"], bool, "final_review.agreed_with_triage")
+    for idx, item in enumerate(data["concerns"]):
+        validate_final_review_concern(item, f"final_review.concerns[{idx}]")
+    if data["verdict"] == "approve" and data["concerns"]:
+        raise ValidationError("approved final reviews must have empty concerns")
+    if data["verdict"] == "block" and not data["needs_human"]:
+        raise ValidationError("blocked final reviews must set needs_human=true")
+    if data["verdict"] != "block" and data["needs_human"]:
+        raise ValidationError("only blocked final reviews may set needs_human=true")
 
 
 def validate_triage(data: Any) -> None:
@@ -120,6 +178,8 @@ VALIDATORS = {
     "tasks.schema.json": validate_tasks,
     "review": validate_review,
     "review.schema.json": validate_review,
+    "final-review": validate_final_review,
+    "final-review.schema.json": validate_final_review,
     "triage": validate_triage,
     "triage.schema.json": validate_triage,
 }
@@ -127,7 +187,7 @@ VALIDATORS = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("schema", help="tasks, review, triage, or schema basename")
+    parser.add_argument("schema", help="tasks, review, final-review, triage, or schema basename")
     parser.add_argument("json_file", type=Path)
     args = parser.parse_args()
 

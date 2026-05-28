@@ -11,7 +11,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from validate_json import validate_review, validate_triage  # noqa: E402
+from validate_json import validate_final_review, validate_review, validate_triage  # noqa: E402
 
 
 def atomic_write(path: Path, text: str) -> None:
@@ -38,7 +38,7 @@ def load_json_stdin() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=[
-        "review", "triage", "pr-title", "pr-body", "branch",
+        "review", "final-review", "triage", "pr-title", "pr-body", "branch",
         "stuck", "abandon", "human-review-needed",
     ])
     parser.add_argument("run_dir", type=Path)
@@ -60,6 +60,11 @@ def main() -> int:
             if data["round"] != args.round:
                 raise ValueError(f"review.round {data['round']} != --round {args.round}")
             path = task_dir / f"review-{args.round}.json"
+            atomic_write(path, json.dumps(data, indent=2) + "\n")
+        elif args.kind == "final-review":
+            data = load_json_stdin()
+            validate_final_review(data)
+            path = task_dir / "final-review.json"
             atomic_write(path, json.dumps(data, indent=2) + "\n")
         elif args.kind == "triage":
             data = load_json_stdin()

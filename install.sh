@@ -2,7 +2,7 @@
 # auto-pr-skill installer
 #
 # Installs the OpenCode skill, /auto-pr slash command, the auto-pr-* subagents,
-# and project profiles into OpenCode's global config and/or a specific
+# project profiles, and references into OpenCode's global config and/or a specific
 # project's .opencode/ directory.
 #
 # Usage:
@@ -183,8 +183,9 @@ install_global() {
         link "$f" "$GLOBAL_PROFILE_DIR/projects/$(basename "$f")"
     done
 
-    link "$SCRIPT_DIR/lib"       "$GLOBAL_PROFILE_DIR/lib"
-    link "$SCRIPT_DIR/templates" "$GLOBAL_PROFILE_DIR/templates"
+    link "$SCRIPT_DIR/lib"        "$GLOBAL_PROFILE_DIR/lib"
+    link "$SCRIPT_DIR/templates"  "$GLOBAL_PROFILE_DIR/templates"
+    link "$SCRIPT_DIR/references" "$GLOBAL_PROFILE_DIR/references"
 }
 
 uninstall_global() {
@@ -205,8 +206,9 @@ uninstall_global() {
             unlink_if_ours "$f" "$SCRIPT_DIR/"
         done
     fi
-    unlink_if_ours "$GLOBAL_PROFILE_DIR/lib"       "$SCRIPT_DIR/"
-    unlink_if_ours "$GLOBAL_PROFILE_DIR/templates" "$SCRIPT_DIR/"
+    unlink_if_ours "$GLOBAL_PROFILE_DIR/lib"        "$SCRIPT_DIR/"
+    unlink_if_ours "$GLOBAL_PROFILE_DIR/templates"  "$SCRIPT_DIR/"
+    unlink_if_ours "$GLOBAL_PROFILE_DIR/references" "$SCRIPT_DIR/"
 }
 
 # Pick the profile yaml that matches the given project directory.
@@ -253,6 +255,8 @@ install_project() {
     else
         warn "No matching profile in projects/*.yaml for $(basename "$proj"). Create one and re-run, or place it manually at $proj_ap/profile.yaml."
     fi
+
+    link "$SCRIPT_DIR/references" "$proj_ap/references"
 }
 
 uninstall_project() {
@@ -267,6 +271,7 @@ uninstall_project() {
     unlink_if_ours "$proj/.opencode/skills/auto-pr-skill/SKILL.md" "$SCRIPT_DIR/"
     unlink_if_ours "$proj/.opencode/commands/auto-pr.md" "$SCRIPT_DIR/"
     unlink_if_ours "$proj/.auto-pr/profile.yaml"         "$SCRIPT_DIR/"
+    unlink_if_ours "$proj/.auto-pr/references"           "$SCRIPT_DIR/"
 }
 
 # ---------------------------------------------------------------------------

@@ -36,14 +36,23 @@ You fix exactly **one** task. The orchestrator gives you:
 Resolve `$LIB` to the first existing directory in:
 `/workspace/projects/auto-pr-skill/lib`, `~/.config/auto-pr/lib`.
 
+Resolve `$REF` to the first existing directory in:
+`/workspace/projects/auto-pr-skill/references`, `~/.config/auto-pr/references`,
+`<run_dir>/references`.
+
 ## Inputs you must read (in this order)
 
 1. `<run_dir>/profile.yaml` — for `repo_path`, `branch_prefix`, `base_branch`.
-2. `<run_dir>/tasks/<task_id>/task.md` — the entire brief. Read it once.
-3. If `round > 1`:
+2. `$REF/amd-rocm-stack.md` when the task or review touches HIP/ROCm,
+   CUDA<->HIP symbol mappings, conditional compilation, or kernel launch
+   parameters.
+3. `<run_dir>/tasks/<task_id>/task.md` — the entire brief. Read it once.
+4. If `round > 1`:
    * `<run_dir>/tasks/<task_id>/review-<round-1>.json`
    * `<run_dir>/tasks/<task_id>/attempt-<round-1>.diff` (skim, don't memorize)
-4. The specific source files listed under "Touched files" in `task.md`.
+   * `<run_dir>/tasks/<task_id>/final-review.json`, if it exists. Treat
+     `verdict=request_changes` concerns like reviewer blocking items.
+5. The specific source files listed under "Touched files" in `task.md`.
    Read these surgically — only the functions/regions implicated by the
    traceback (the brief includes file:line). Do **not** open large unrelated
    files or grep the whole repo.
@@ -90,7 +99,9 @@ Resolve `$LIB` to the first existing directory in:
 ### Round N (N ≥ 2)
 
 1. Re-read review-<N-1>.json. Address every entry in `blocking[]`. Treat
-   `suggestions[]` as optional but cheap if reasonable.
+   `suggestions[]` as optional but cheap if reasonable. If
+   `final-review.json` exists and has `verdict: "request_changes"`, address
+   every actionable item in its `concerns[]` too.
 2. You should already be on the task branch (orchestrator guarantees this);
    confirm with `git rev-parse --abbrev-ref HEAD`. If not, `git checkout <branch>`.
 3. Make additional commits on top. Each round adds one commit; do not amend

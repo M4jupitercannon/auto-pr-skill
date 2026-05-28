@@ -38,30 +38,54 @@ You read:
 1. `<run_dir>/tasks/<task_id>/task.md` — what was failing, which files were
    in scope.
 2. `<run_dir>/tasks/<task_id>/attempt-<N>.diff` — the diff to review.
-3. (round > 1) the previous `review-<N-1>.json` to confirm previous blocking
+3. `references/amd-rocm-stack.md`, resolved from the first existing directory
+   in `/workspace/projects/auto-pr-skill/references`,
+   `~/.config/auto-pr/references`, or `<run_dir>/references`. Consult it
+   whenever the diff touches HIP/ROCm code paths, CUDA<->HIP symbol mappings,
+   or kernel launch parameters.
+4. (round > 1) the previous `review-<N-1>.json` to confirm previous blocking
    items were addressed.
-4. The actual source files referenced by the diff, only as needed to check
+5. The actual source files referenced by the diff, only as needed to check
    surrounding context (open the specific lines around the hunks).
 
 ## Decision criteria
 
-In order of weight:
+In order of weight, be skeptical and block when evidence is missing:
 
 1. **Correctness.** Does the diff plausibly fix every test listed in
    `task.md`? If a test is silently ignored or "fixed" by deletion, that's
    `verdict: block`.
-2. **No collateral damage.** The diff must stay inside (or strictly adjacent
+2. **Cross-platform / vendor parity.** A ROCm/HIP fix must not break CUDA,
+   CPU, XPU, or other non-AMD products. Block with category `cross-platform`
+   for hard-coded device strings, replacing `cuda*` with `hip*` without
+   preserving the CUDA path, AMD-only launch geometry that assumes wavefront
+   size 64 where CUDA expects warp size 32, or tolerance changes that would
+   mask CUDA/NVIDIA regressions.
+3. **Conditional-compilation discipline.** New `PADDLE_WITH_HIP`,
+   `PADDLE_WITH_CUDA`, or backend-specific branches must preserve the
+   behavior of the original matrix. A new HIP branch that leaves CUDA/CPU/XPU
+   unhandled is blocking unless `task.md` proves those products are out of
+   scope.
+4. **No collateral damage.** The diff must stay inside (or strictly adjacent
    to) the files listed under "Touched files" in task.md. Anything beyond
    that requires a justification in a `notes.md` from the coder; if missing,
    that's a `blocking` item with category `regression-risk`.
-3. **No obvious regressions.** Watch for: removed assertions, weakened
-   tolerances, hard-coded device names, swallowed exceptions, removed locks,
-   off-by-one changes, accidental API renames.
-4. **Tests still meaningful.** If the coder modified test files, ensure they
-   still test something. Lowering tolerance to make a test pass is `block`.
-5. **Style fits the file.** Match surrounding indentation, naming, language.
-   Style violations are `suggestions`, not blocking, unless they impede
-   readability of a hot path.
+5. **API / ABI stability.** Block accidental public API, pybind, exported
+   symbol, or header contract changes, especially under `paddle/phi/api/`.
+6. **Numerical regression risk.** Block removed assertions, lowered `rtol` or
+   `atol`, dtype downgrades, silent NaN/Inf handling, or code that only makes
+   an AMD test pass by weakening the check.
+7. **Resource / concurrency safety.** Block dropped CUDA/HIP error checks,
+   ignored return values, swallowed exceptions, removed locks, lifetime
+   changes around streams/events/allocators, or sticky-error pollution.
+8. **Build-matrix impact.** Changes to `CMakeLists.txt`, `cmake/`, `setup.py`,
+   or build flags are `regression-risk` blocking unless the task explicitly
+   targeted build wiring.
+9. **Tests still meaningful.** If the coder modified test files, ensure they
+   still test behavior. Lowering tolerance to make a test pass is `block`.
+10. **Style fits the file.** Match surrounding indentation, naming, language.
+    Style violations are `suggestions`, not blocking, unless they impede
+    readability of a hot path.
 
 ## Output: `review-<N>.json`
 

@@ -1,5 +1,5 @@
 ---
-description: Auto-fix CI failures and open PRs for one project (build → analyze → coder/reviewer loop → triage → PR per task).
+description: Auto-fix CI failures and open PRs for one project (build → analyze → coder/reviewer loop → triage → final review → PR per task).
 agent: auto-pr-orchestrator
 subtask: true
 ---
@@ -46,6 +46,17 @@ Steps (do not skip; mirror the agent prompt's playbook):
      `write_artifact.py stuck`, mark it with `state.sh mark-task-stuck`, and
      continue with the next task.
    - Spawn `auto-pr-triage` → writes `triage.json`.
+   - `state.sh phase $RUN final-review`.
+   - Spawn `auto-pr-final-reviewer` → writes `final-review.json`. Read only
+     `verdict` + `needs_human`.
+   - If final review says `request_changes` and the current round is below
+     `max_review_rounds`, spawn `auto-pr-coder` round=N+1, then re-enter the
+     normal reviewer loop for that new round. Do not grant a separate final
+     review retry budget.
+   - If final review says `request_changes` after max rounds, write
+     `stuck.json`, mark with `state.sh mark-task-stuck`, and continue.
+   - If final review says `block`, write `human-review-needed.json`, mark with
+     `state.sh mark-human-review-needed`, and continue.
    - If triage says `needs_human=true` and profile
      `auto_submit_human_needed` is not `true`, write
      `human-review-needed.json` with `write_artifact.py human-review-needed`,

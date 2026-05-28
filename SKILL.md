@@ -1,6 +1,6 @@
 ---
 name: auto-pr-skill
-description: Run a multi-agent OpenCode auto-PR workflow that builds a project, classifies CI failures into compact fix tasks, loops coder and reviewer agents, triages human-review risk, and submits safe PRs.
+description: Run a multi-agent OpenCode auto-PR workflow that builds a project, classifies CI failures into compact fix tasks, loops coder and reviewer agents, triages and final-reviews human-review risk, and submits safe PRs.
 license: MIT
 compatibility: opencode
 metadata:
@@ -27,8 +27,8 @@ The pipeline is:
 1. Initialize a run directory under `<repo>/.auto-pr/run-<UTC>/`.
 2. Run the profiled build via `lib/run_build.sh`.
 3. Parse and classify CTest/build failures into compact tasks.
-4. For each task, run coder, reviewer, fixer loops, triage, then submit or
-   record a human-review-needed skip.
+4. For each task, run coder, reviewer, fixer loops, triage, final review, then
+   submit or record a human-review-needed skip.
 
 Keep multi-agent communication in the run directory using the documented
 `md`/`json` artifacts. Use the deterministic helpers in `lib/` for build

@@ -21,6 +21,7 @@ auto-pr-orchestrator  (one primary agent, runs the state machine)
    |     auto-pr-reviewer   (round 1)        -> review-1.json
    |     [if not approved]  coder/reviewer loop, max N rounds
    |     auto-pr-triage                       -> triage.json
+   |     auto-pr-final-reviewer              -> final-review.json
    |     auto-pr-pr-submitter (gh pr create)  -> pr.json
    |     [needs human review]                  -> human-review-needed.json
    |
@@ -49,7 +50,7 @@ cd /workspace/projects/auto-pr-skill
 ```
 
 `install.sh` symlinks the OpenCode skill, slash command, agents, and shared
-`lib/` / `templates/` into:
+`lib/` / `templates/` / `references/` into:
 
 | Location | Used by |
 | --- | --- |
@@ -58,9 +59,10 @@ cd /workspace/projects/auto-pr-skill
 | `~/.config/opencode/agents/auto-pr-*.md` | OpenCode subagent registry |
 | `~/.config/auto-pr/projects/*.yaml`      | profile resolver |
 | `~/.config/auto-pr/{lib,templates}`      | helper scripts (read by agents) |
+| `~/.config/auto-pr/references`           | shared review references, including AMD ROCm stack notes |
 | `<repo>/.opencode/skills/auto-pr-skill/SKILL.md` | project-local skill discovery |
 | `<repo>/.opencode/{commands,agents}/`    | per-project overrides (when `--project`) |
-| `<repo>/.auto-pr/profile.yaml`           | resolved profile for that repo |
+| `<repo>/.auto-pr/{profile.yaml,references}` | resolved profile and project-local references |
 
 Symlinks (not copies), so editing the repo updates the live install.
 
@@ -129,6 +131,7 @@ tasks/<task-id>/
     review-2.json
     ...
     triage.json
+    final-review.json     # final automated reviewer verdict before PR submission
     pr_title.txt
     pr_body.md
     pr.json                # final PR url + number
@@ -147,6 +150,7 @@ JSON Schemas (Draft 2020-12) live in `templates/`:
 
 * [`tasks.schema.json`](templates/tasks.schema.json)
 * [`review.schema.json`](templates/review.schema.json)
+* [`final-review.schema.json`](templates/final-review.schema.json)
 * [`triage.schema.json`](templates/triage.schema.json)
 
 ## Library scripts (deterministic, no LLM)
@@ -158,8 +162,8 @@ JSON Schemas (Draft 2020-12) live in `templates/`:
 | `lib/init_run.sh` | Creates the run directory and `state.json`. |
 | `lib/run_build.sh` | Runs the profiled build command, tees `build.log`, and writes the real command exit code to `build.exit`. |
 | `lib/state.sh` | jq-backed read/write helpers for `state.json`. |
-| `lib/validate_json.py` | Stdlib validation for task, review, and triage JSON artifacts. |
-| `lib/write_artifact.py` | Validated writer for review, triage, PR text, stuck, abandon, and human-review skip artifacts. |
+| `lib/validate_json.py` | Stdlib validation for task, review, final-review, and triage JSON artifacts. |
+| `lib/write_artifact.py` | Validated writer for review, final-review, triage, PR text, stuck, abandon, and human-review skip artifacts. |
 | `lib/submit_pr.sh` | Fail-closed pre-push check → `git push` → `gh pr create`, then best-effort labels. |
 
 Keeping deterministic work in scripts (not in agent prompts) keeps the run
@@ -177,7 +181,7 @@ reproducible and free of LLM-flake.
 
 ## Design notes
 
-* **One primary agent + four+ subagents** — the orchestrator owns state,
+* **One primary agent + five+ subagents** — the orchestrator owns state,
   every other agent is one-shot. Subagents never call each other directly;
   the orchestrator is the only invoker.
 * **Files-not-prompts** — every multi-KB payload (logs, diffs, reviews) lives
@@ -190,6 +194,15 @@ reproducible and free of LLM-flake.
   noninteractive `git`/`gh` plumbing only.
 * **Coder subsumes code-fixer** — `auto-pr-coder` handles both first attempts
   and reviewer-requested fixes.
+* **Final PR review gate** — after triage, `auto-pr-final-reviewer` performs a
+  last read-only pass before submission. It can approve, block automatic
+  submission for human review, or send the task back to the coder within the
+  same `max_review_rounds` budget.
+* **Cross-platform / AMD ROCm awareness** — reviewers and coders consult
+  [`references/amd-rocm-stack.md`](references/amd-rocm-stack.md) for ROCm stack
+  layers, HIP/CUDA parity checks, AMD GPU targets, Paddle ROCm paths, and links
+  to upstream AMD documentation. ROCm fixes must preserve CUDA/NVIDIA, CPU,
+  XPU, and generic GPU behavior unless the task explicitly proves otherwise.
 * **Project PR conventions are preserved** — the submitter delegates the
   title/body to the project's existing PR skill (`paddle-pull-request` for
   Paddle), so any upstream change to that skill propagates automatically.

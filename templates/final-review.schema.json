@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-pr-skill/final-review.schema.json",
+  "title": "auto-pr final-review.json",
+  "description": "Final reviewer verdict after normal review and triage, before PR submission.",
+  "type": "object",
+  "required": ["verdict", "needs_human", "concerns", "agreed_with_reviewer", "agreed_with_triage"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "verdict": { "const": "block" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": { "needs_human": { "const": true } }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": { "verdict": { "const": "block" } },
+          "required": ["verdict"]
+        }
+      },
+      "then": {
+        "properties": { "needs_human": { "const": false } }
+      }
+    }
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "request_changes", "block"]
+    },
+    "needs_human": {
+      "type": "boolean",
+      "description": "True when the final reviewer believes a human reviewer must inspect the change."
+    },
+    "concerns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dimension", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "correctness",
+              "cross-platform",
+              "triage",
+              "test-coverage",
+              "regression-risk",
+              "build",
+              "style",
+              "security",
+              "other"
+            ]
+          },
+          "file": { "type": ["string", "null"] },
+          "line": { "type": ["integer", "null"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "agreed_with_reviewer": {
+      "type": "boolean"
+    },
+    "agreed_with_triage": {
+      "type": "boolean"
+    }
+  }
+}
