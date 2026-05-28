@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-pr-skill/tasks.schema.json",
+  "title": "auto-pr tasks.json",
+  "description": "Output of lib/classify_errors.py. An ordered, prioritized list of fix tasks the orchestrator iterates over.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "fingerprint", "status", "exception", "n_failures", "tests", "rep_file", "rep_line", "files", "score", "summary"],
+    "additionalProperties": false,
+    "properties": {
+      "id":          { "type": "string", "description": "Task identifier; also the directory name under tasks/." },
+      "fingerprint": { "type": "string", "description": "Group key from parse_ctest (exception@file:line)." },
+      "status":      { "type": "string", "enum": ["failed", "timeout"] },
+      "exception":   { "type": ["string", "null"] },
+      "n_failures":  { "type": "integer", "minimum": 1 },
+      "tests":       { "type": "array", "items": { "type": "string" }, "description": "Names of the failing ctest cases in this group." },
+      "rep_file":    { "type": ["string", "null"] },
+      "rep_line":    { "type": ["integer", "null"] },
+      "files":       { "type": "array", "items": { "type": "string" }, "description": "Unique source files appearing across all tracebacks." },
+      "score":       { "type": "number", "description": "Priority score, higher = fix first." },
+      "summary":     { "type": "string", "description": "One-line human summary of the failure." }
+    }
+  }
+}

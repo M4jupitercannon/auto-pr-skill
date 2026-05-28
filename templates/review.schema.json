@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-pr-skill/review.schema.json",
+  "title": "auto-pr review-N.json",
+  "description": "One reviewer verdict per attempt. The orchestrator only reads `approved` and `needs_human`; everything else is for the next coder iteration.",
+  "type": "object",
+  "required": ["approved", "round", "verdict", "needs_human", "blocking", "suggestions"],
+  "additionalProperties": false,
+  "properties": {
+    "round":       { "type": "integer", "minimum": 1 },
+    "approved":    { "type": "boolean", "description": "True only if the diff is ready to merge." },
+    "verdict":     { "type": "string", "enum": ["approve", "request_changes", "block"] },
+    "needs_human": { "type": "boolean", "default": false, "description": "Reviewer-side hint to triage." },
+    "blocking":    {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "category":   { "type": "string", "enum": ["correctness", "test-coverage", "regression-risk", "build", "style", "security", "other"] },
+          "file":       { "type": ["string", "null"] },
+          "line":       { "type": ["integer", "null"] },
+          "message":    { "type": "string" }
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["message"],
+        "additionalProperties": false,
+        "properties": {
+          "file":    { "type": ["string", "null"] },
+          "line":    { "type": ["integer", "null"] },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

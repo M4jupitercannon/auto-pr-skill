@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-pr-skill/triage.schema.json",
+  "title": "auto-pr triage.json",
+  "description": "Decision whether a passing-review change still needs a human PR reviewer.",
+  "type": "object",
+  "required": ["needs_human", "reasons", "diff_stats", "matched_paths"],
+  "additionalProperties": false,
+  "properties": {
+    "needs_human": { "type": "boolean" },
+    "reasons":     { "type": "array", "items": { "type": "string" } },
+    "diff_stats": {
+      "type": "object",
+      "required": ["files_changed", "insertions", "deletions"],
+      "additionalProperties": false,
+      "properties": {
+        "files_changed": { "type": "integer", "minimum": 0 },
+        "insertions":    { "type": "integer", "minimum": 0 },
+        "deletions":     { "type": "integer", "minimum": 0 }
+      }
+    },
+    "matched_paths": { "type": "array", "items": { "type": "string" } }
+  }
+}

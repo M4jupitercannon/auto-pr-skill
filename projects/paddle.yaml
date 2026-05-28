@@ -1,0 +1,63 @@
+# Profile for PaddlePaddle/Paddle on ROCm MI300X.
+#
+# Resolved by /auto-pr in this order:
+#   1. <repo>/.auto-pr/profile.yaml  (set up by `install.sh --project ...`)
+#   2. ~/.config/auto-pr/projects/<name>.yaml
+#   3. <auto-pr-skill>/projects/<name>.yaml
+
+name: paddle
+
+# Absolute path to the working tree.
+repo_path: /workspace/projects/Paddle
+
+# Build + ctest entrypoint bundled with this skill under projects/paddle/.
+# The orchestrator passes "all" to run venv -> pull -> build -> test.
+# Override with `build_args: build` for a build-only run.
+build_cmd: /workspace/projects/auto-pr-skill/projects/paddle/ci-rocm-mi300x.sh
+build_args: all
+
+# Where ctest leaves its log files. Glob is resolved relative to repo_path.
+log_glob: build/ctest_workspace/logs/ctest-*.log
+
+# Path to the project's PR-creation skill. The submitter agent reads this
+# at runtime and follows its template/title rules.
+pr_skill_path: /workspace/projects/Paddle/.agents/skills/paddle-pull-request/SKILL.md
+
+# Branches are created as `<branch_prefix><task-id>` off `base_branch`.
+branch_prefix: auto-pr/
+base_branch: develop
+
+# Upstream remote we push to. Use a fork remote name like `fork` if you don't
+# have push access to PaddlePaddle/Paddle.
+push_remote: origin
+
+# Triage heuristics: any task whose patch touches one of these path prefixes
+# is force-flagged needs_human=true.
+human_review_paths:
+  - paddle/cinn/
+  - paddle/phi/api/
+  - paddle/fluid/distributed/
+  - paddle/fluid/inference/api/
+  - python/paddle/distributed/
+  - cmake/
+
+# Triage threshold: PRs larger than this many net lines auto-flag for review.
+human_review_max_diff_lines: 500
+
+# Hard caps to keep a single /auto-pr run bounded.
+max_tasks_per_run: 10
+max_review_rounds: 3
+
+# By default, tasks that triage marks as needing human review are recorded and
+# skipped instead of auto-submitted. Set true only when the target repository
+# expects bot PRs for human-needed changes.
+auto_submit_human_needed: false
+human_review_label: human-review-needed
+
+# Optional: extra labels to add after PR creation. Missing labels are reported
+# in pr.json but do not fail the PR submission.
+gh_extra_labels: []
+
+# Pre-commit / lint command to run before pushing each task's changes. Set
+# to an empty string to skip. The PR skill expects `prek` here.
+pre_push_check: prek
