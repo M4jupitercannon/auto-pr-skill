@@ -2,20 +2,23 @@
 # auto-pr-skill installer
 #
 # Installs the OpenCode skill, /auto-pr slash command, the auto-pr-* subagents,
-# and project profiles into OpenCode's global config (always) and optionally
-# into a specific project's .opencode/ directory.
+# and project profiles into OpenCode's global config and/or a specific
+# project's .opencode/ directory.
 #
 # Usage:
 #   ./install.sh                            # global only
 #   ./install.sh --project /path/to/repo    # global + per-project (Paddle, etc.)
+#   ./install.sh --project P --project-only # per-project only, no global links
 #   ./install.sh --uninstall                # remove global symlinks
 #   ./install.sh --uninstall --project P    # also remove project symlinks
+#   ./install.sh --uninstall --project P --project-only # remove project only
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH=""
 UNINSTALL=0
+PROJECT_ONLY=0
 
 GLOBAL_OPENCODE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 GLOBAL_PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/auto-pr"
@@ -39,7 +42,7 @@ warn() { printf '%s[warn]%s %s\n'         "$YELLOW" "$RESET" "$*"; }
 err()  { printf '%s[err]%s %s\n'          "$RED"   "$RESET" "$*" >&2; }
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -57,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             UNINSTALL=1
             shift
             ;;
+        --project-only|--no-global)
+            PROJECT_ONLY=1
+            shift
+            ;;
         -h|--help)
             usage 0
             ;;
@@ -66,6 +73,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if (( PROJECT_ONLY )) && [[ -z "$PROJECT_PATH" ]]; then
+    err "--project-only requires --project /path/to/repo"
+    exit 2
+fi
 
 # ---------------------------------------------------------------------------
 # Prerequisite checks
@@ -263,13 +275,17 @@ uninstall_project() {
 check_prereqs
 
 if (( UNINSTALL )); then
-    uninstall_global
+    if (( ! PROJECT_ONLY )); then
+        uninstall_global
+    fi
     [[ -n "$PROJECT_PATH" ]] && uninstall_project "$PROJECT_PATH"
     ok "Done."
     exit 0
 fi
 
-install_global
+if (( ! PROJECT_ONLY )); then
+    install_global
+fi
 [[ -n "$PROJECT_PATH" ]] && install_project "$PROJECT_PATH"
 
 cat <<EOF
