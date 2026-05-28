@@ -302,7 +302,10 @@ step_git_pull() {
             if [[ "$current_branch" != "develop" ]]; then
                 git checkout develop 2>/dev/null || git checkout -b develop origin/develop
             fi
-            git merge --ff-only origin/develop
+            if ! git merge --ff-only origin/develop; then
+                log "Fast-forward merge failed (unrelated histories in shallow clone). Resetting to origin/develop."
+                git reset --hard origin/develop
+            fi
         fi
     fi
 
