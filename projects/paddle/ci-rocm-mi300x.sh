@@ -261,6 +261,7 @@ step_venv() {
 
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
+    export UV_PYTHON="${VENV_DIR}/bin/python"
 
     log "Installing build dependencies..."
     uv pip install -r "${PADDLE_DIR}/python/requirements.txt"
@@ -320,6 +321,7 @@ step_build() {
     require_venv
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
+    export UV_PYTHON="${VENV_DIR}/bin/python"
 
     check_tmp_space
     setup_graphviz
@@ -332,6 +334,9 @@ step_build() {
     py_lib=$(python -c "import sysconfig, pathlib; print(pathlib.Path(sysconfig.get_config_var('LIBDIR')) / sysconfig.get_config_var('LDLIBRARY'))")
 
     cd "$BUILD_DIR"
+
+    # OpenBLAS bundled with Paddle has a broken getarch with newer GCC
+    export TARGET=SKYLAKEX
 
     log "Running CMake configure..."
     cmake .. -GNinja \
@@ -416,6 +421,7 @@ step_test() {
 
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
+    export UV_PYTHON="${VENV_DIR}/bin/python"
 
     local ctest_workdir="${BUILD_DIR}/ctest_workspace"
     mkdir -p "${ctest_workdir}"/{tmp,paddle_extensions,home,logs,cache,hipcc_tmp}
