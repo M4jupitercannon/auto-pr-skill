@@ -46,6 +46,7 @@ INSTALL_CLI=0
 API_KEY="${DEEPSEEK_API_KEY:-}"
 ENV_FILE=""
 SHELL_RC=""
+CLAUDE_NPM_PREFIX=""   # set by install_cli when --prefix is used
 
 GLOBAL_CLAUDE_DIR="$HOME/.claude"
 GLOBAL_PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/auto-pr"
@@ -268,8 +269,34 @@ install_cli() {
             warn "Node $(node --version) detected; Claude Code needs Node 18+."
         fi
     fi
-    npm install -g @anthropic-ai/claude-code
-    ok "Claude Code CLI installed: $(claude --version 2>/dev/null || echo 'run: claude --version')"
+
+    local npm_prefix
+    npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+    npm_prefix="${npm_prefix:-$HOME/.local}"
+
+    # Dev containers often ship npm with prefix=/usr (not writable). Fall back to
+    # ~/.local instead of failing with ENOENT on /usr/lib/node_modules/...
+    if [[ ! -w "$npm_prefix" ]]; then
+        npm_prefix="$HOME/.local"
+        warn "npm global prefix is not writable; installing under $npm_prefix"
+    fi
+    mkdir -p "$npm_prefix"/{bin,lib}
+
+    if ! npm install -g --prefix "$npm_prefix" @anthropic-ai/claude-code; then
+        err "npm install failed. Try manually:"
+        err "  mkdir -p \"$HOME/.local/bin\" && npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code"
+        err "  export PATH=\"$HOME/.local/bin:\$PATH\""
+        exit 4
+    fi
+
+    CLAUDE_NPM_PREFIX="$npm_prefix"
+    export PATH="$npm_prefix/bin:${PATH:-}"
+
+    if command -v claude >/dev/null 2>&1; then
+        ok "Claude Code CLI installed: $(claude --version 2>/dev/null)"
+    else
+        ok "Claude Code CLI installed under $npm_prefix/bin (add to PATH: export PATH=\"$npm_prefix/bin:\$PATH\")"
+    fi
 }
 
 write_deepseek_env() {
@@ -301,6 +328,11 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$DEEPSEEK_FAST_MODEL"
 export CLAUDE_CODE_SUBAGENT_MODEL="$DEEPSEEK_FAST_MODEL"
 export CLAUDE_CODE_EFFORT_LEVEL="max"
 EOF
+    if [[ -n "$CLAUDE_NPM_PREFIX" ]]; then
+        cat >> "$ENV_FILE" <<EOF
+export PATH="$CLAUDE_NPM_PREFIX/bin:\$PATH"
+EOF
+    fi
     chmod 600 "$ENV_FILE"
     ok "wrote DeepSeek env file: $ENV_FILE"
     if (( placeholder )); then

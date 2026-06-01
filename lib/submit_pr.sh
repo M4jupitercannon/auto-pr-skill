@@ -161,7 +161,13 @@ git push -u "$push_remote" "$branch"
 
 # Build gh args. Labels are added after creation so missing labels do not make
 # an otherwise valid PR submission fail.
-gh_args=(pr create --title "$title" --body-file "$body_file" --head "$branch")
+# If push_remote is not origin, it's a fork — prepend owner for --head
+fork_owner="$(git remote get-url "$push_remote" | sed 's|https://github.com/||;s|https://[^@]*@github.com/||;s|/Paddle.*||;s|\.git||')"
+if [[ "$push_remote" != "origin" && "$push_remote" != "upstream" ]]; then
+    gh_args=(pr create --title "$title" --body-file "$body_file" --head "${fork_owner}:${branch}")
+else
+    gh_args=(pr create --title "$title" --body-file "$body_file" --head "$branch")
+fi
 [[ -n "$base_branch" ]] && gh_args+=(--base "$base_branch")
 
 # Extra labels from profile (gh_extra_labels: [foo, bar])
