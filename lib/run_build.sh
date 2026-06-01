@@ -8,6 +8,11 @@ set -euo pipefail
 run_dir="${1:?usage: run_build.sh <run_dir>}"
 profile="$run_dir/profile.yaml"
 
+# Always record an exit code, even on an early/fatal error, so the driver can
+# move on to analysis instead of re-running the build forever.
+mkdir -p "$run_dir"
+trap 'rc=$?; printf "%s\n" "$rc" > "$run_dir/build.exit" 2>/dev/null || true' EXIT
+
 [[ -f "$profile" ]] || { echo "ERROR: profile not found: $profile" >&2; exit 2; }
 
 yaml_get() {

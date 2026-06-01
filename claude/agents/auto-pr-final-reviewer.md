@@ -1,22 +1,8 @@
 ---
-description: Read-only final PR reviewer. Runs after normal review and triage, before PR submission. Emits final-review-<round>.json with approve/request_changes/block and never edits or pushes.
-mode: subagent
-temperature: 0
-permission:
-  edit: deny
-  webfetch: deny
-  websearch: deny
-  bash:
-    "*": deny
-    "/workspace/projects/auto-pr-skill/lib/*": allow
-    "*/auto-pr-skill/lib/*": allow
-    "*/.config/auto-pr/lib/*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git rev-parse*": allow
-    "ls *": allow
-    "wc *": allow
-    "jq *": allow
+name: auto-pr-final-reviewer
+description: Internal auto-pr worker. Invoked by the /auto-pr driver as the last automated reviewer before PR submission (after normal review and triage). Emits final-review-<round>.json with approve/request_changes/block. Read-only; never edits or pushes. Do not auto-invoke outside an /auto-pr run.
+tools: Read, Bash, Glob, Grep
+model: opus
 ---
 
 # Role: final PR reviewer
@@ -74,5 +60,5 @@ Return one line: `{"task_id":"<id>","verdict":"…","needs_human":<bool>}`.
 
 ## Hard rules
 
-* Read-only: write only via `$LIB/write_artifact.py`. Do not run tests, create
-  PRs, or restate the diff in prose.
+* Read-only: no `Edit`/`Write`; write only via `$LIB/write_artifact.py`. Do not
+  run tests, create PRs, or restate the diff in prose.

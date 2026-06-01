@@ -85,7 +85,7 @@ ensure_local_artifact_ignores() {
     mkdir -p "$(dirname "$exclude_file")"
     touch "$exclude_file"
 
-    for pattern in "/.auto-pr/" "/.opencode/"; do
+    for pattern in "/.auto-pr/" "/.opencode/" "/.claude/"; do
         if ! grep -Fxq "$pattern" "$exclude_file"; then
             missing+=("$pattern")
         fi
@@ -144,6 +144,9 @@ fi
 
 ensure_local_artifact_ignores "$REPO_PATH"
 
+MAX_REVIEW_ROUNDS="$(yaml_get max_review_rounds)"; [[ -n "$MAX_REVIEW_ROUNDS" ]] || MAX_REVIEW_ROUNDS=3
+AUTO_SUBMIT_HUMAN="$(yaml_get auto_submit_human_needed)"; [[ "$AUTO_SUBMIT_HUMAN" == "true" ]] || AUTO_SUBMIT_HUMAN=false
+
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="$REPO_PATH/.auto-pr/run-$TS"
 mkdir -p "$RUN_DIR/tasks"
@@ -153,14 +156,18 @@ cp "$PROFILE" "$RUN_DIR/profile.yaml"
 
 cat > "$RUN_DIR/state.json" <<JSON
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phase": "init",
   "project": "$PROJECT_NAME",
   "profile_path": "$PROFILE",
   "repo_path": "$REPO_PATH",
   "run_dir": "$RUN_DIR",
   "started_at": "$TS",
+  "max_review_rounds": $MAX_REVIEW_ROUNDS,
+  "auto_submit_human_needed": $AUTO_SUBMIT_HUMAN,
   "tasks_total": 0,
+  "task_ids": [],
+  "task_index": 0,
   "tasks_done": 0,
   "tasks_abandoned": 0,
   "tasks_stuck": 0,

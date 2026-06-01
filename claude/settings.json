@@ -1,0 +1,23 @@
+{
+  "_comment": "auto-pr-skill guardrails for Claude Code. The installer MERGES these permission entries into ~/.claude/settings.json (global) or <repo>/.claude/settings.json (project); it never clobbers your other settings. The deny list is the safety net that keeps a weak model (and read-only worker subagents) from pushing, opening/merging PRs, or hitting the network directly. Real pushes happen only inside lib/submit_pr.sh, which the deny rules do not intercept.",
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr close:*)",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "allow": [
+      "Bash(jq:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git rev-parse:*)",
+      "Read",
+      "Task"
+    ]
+  }
+}

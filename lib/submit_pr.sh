@@ -11,10 +11,11 @@
 #     <run_dir>/tasks/<task_id>/branch              # plain text: branch name
 #     <run_dir>/tasks/<task_id>/pr_title.txt
 #     <run_dir>/tasks/<task_id>/pr_body.md
-#     <run_dir>/tasks/<task_id>/triage.json
+#     <run_dir>/tasks/<task_id>/triage-<N>.json   # latest round; falls back to triage.json
 #
 # Outputs:
-#     <run_dir>/tasks/<task_id>/pr.json   # {url, number, branch, needs_human}
+#     <run_dir>/tasks/<task_id>/pr.json        # {url, number, branch, needs_human}
+#     <run_dir>/tasks/<task_id>/pr-error.json  # on any failure without pr.json
 set -euo pipefail
 
 run_dir="${1:?usage: submit_pr.sh <run_dir> <task_id>}"
@@ -26,6 +27,18 @@ task_dir="$run_dir/tasks/$task_id"
 [[ -f "$profile" ]] || { echo "ERROR: profile not found: $profile" >&2; exit 2; }
 [[ -d "$task_dir" ]] || { echo "ERROR: task dir not found: $task_dir" >&2; exit 3; }
 
+# Bound submit failures: any non-zero exit that did not produce pr.json leaves a
+# machine-readable marker so the driver routes the task to human-review instead
+# of re-spawning the submitter forever.
+write_pr_error_on_failure() {
+    local rc=$?
+    if [[ "$rc" -ne 0 && ! -f "$task_dir/pr.json" ]]; then
+        printf '{"reason":"submit-failed","exit":%s,"task_id":"%s"}\n' "$rc" "$task_id" \
+            > "$task_dir/pr-error.json" 2>/dev/null || true
+    fi
+}
+trap write_pr_error_on_failure EXIT
+
 yaml_get() {
     awk -v key="$1" -F': *' '
         $1 == key { sub(/^[^:]+: */, ""); gsub(/^"|"$/, ""); print; exit }
@@ -33,11 +46,11 @@ yaml_get() {
 }
 
 git_status_without_artifacts() {
-    git status --porcelain -- . ':(exclude).auto-pr' ':(exclude).opencode'
+    git status --porcelain -- . ':(exclude).auto-pr' ':(exclude).opencode' ':(exclude).claude'
 }
 
 git_add_without_artifacts() {
-    git add -A -- . ':(exclude).auto-pr' ':(exclude).opencode'
+    git add -A -- . ':(exclude).auto-pr' ':(exclude).opencode' ':(exclude).claude'
 }
 
 repo_path="$(yaml_get repo_path)"
@@ -55,7 +68,18 @@ human_review_label="$(yaml_get human_review_label)"
 branch_file="$task_dir/branch"
 title_file="$task_dir/pr_title.txt"
 body_file="$task_dir/pr_body.md"
-triage_file="$task_dir/triage.json"
+
+# Prefer the round-scoped triage artifact (highest N); fall back to the
+# un-suffixed name for back-compat.
+triage_file=""
+triage_best=-1
+for f in "$task_dir"/triage-*.json; do
+    [[ -e "$f" ]] || continue
+    cand="${f##*/triage-}"; cand="${cand%.json}"
+    [[ "$cand" =~ ^[0-9]+$ ]] || continue
+    (( cand > triage_best )) && { triage_best="$cand"; triage_file="$f"; }
+done
+[[ -n "$triage_file" ]] || triage_file="$task_dir/triage.json"
 
 for f in "$branch_file" "$title_file" "$body_file" "$triage_file"; do
     [[ -f "$f" ]] || { echo "ERROR: required input missing: $f" >&2; exit 5; }

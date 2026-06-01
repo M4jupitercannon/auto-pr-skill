@@ -1,26 +1,8 @@
 ---
-description: Composes a PR title/body matching the project's PR skill (e.g. paddle-pull-request), writes them to disk, then runs lib/submit_pr.sh which pushes the branch and creates the PR via gh. Returns pr.json.
-mode: subagent
-temperature: 0.1
-permission:
-  edit: deny
-  webfetch: deny
-  websearch: deny
-  bash:
-    "*": ask
-    "/workspace/projects/auto-pr-skill/lib/submit_pr.sh*": allow
-    "*/auto-pr-skill/lib/submit_pr.sh*": allow
-    "*/.config/auto-pr/lib/submit_pr.sh*": allow
-    "/workspace/projects/auto-pr-skill/lib/*": allow
-    "*/auto-pr-skill/lib/*": allow
-    "*/.config/auto-pr/lib/*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git rev-parse*": allow
-    "git status*": allow
-    "ls *": allow
-    "printf *": allow
-    "jq *": allow
+name: auto-pr-pr-submitter
+description: Internal auto-pr worker. Invoked by the /auto-pr driver to compose a PR title/body matching the project's PR skill, write them to disk, then run lib/submit_pr.sh which pushes the branch and creates the PR via gh. Returns pr.json. Do not auto-invoke outside an /auto-pr run.
+tools: Read, Bash, Glob, Grep
+model: haiku
 ---
 
 # Role: PR submitter

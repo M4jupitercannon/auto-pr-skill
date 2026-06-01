@@ -3,6 +3,7 @@
   "$id": "https://auto-pr-skill/triage.schema.json",
   "title": "auto-pr triage.json",
   "description": "Decision whether a passing-review change still needs a human PR reviewer.",
+  "$comment": "Runtime enforcement lives in lib/validate_json.py; tests/test_libs.py guards the shape.",
   "type": "object",
   "required": ["needs_human", "reasons", "diff_stats", "matched_paths"],
   "additionalProperties": false,

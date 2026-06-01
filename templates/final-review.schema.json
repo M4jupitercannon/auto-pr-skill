@@ -3,6 +3,7 @@
   "$id": "https://auto-pr-skill/final-review.schema.json",
   "title": "auto-pr final-review.json",
   "description": "Final reviewer verdict after normal review and triage, before PR submission.",
+  "$comment": "Runtime enforcement lives in lib/validate_json.py; tests/test_libs.py guards that these enums stay in sync.",
   "type": "object",
   "required": ["verdict", "needs_human", "concerns", "agreed_with_reviewer", "agreed_with_triage"],
   "additionalProperties": false,

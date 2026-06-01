@@ -1,23 +1,8 @@
 ---
-description: Read-only failure classifier. Runs lib/parse_ctest.py + lib/classify_errors.py to turn a giant ctest log into a small ranked tasks.json. Returns only counts and a path. Never reads the log into its own context.
-mode: subagent
-temperature: 0
-permission:
-  edit: deny
-  webfetch: deny
-  websearch: deny
-  bash:
-    "*": deny
-    "/workspace/projects/auto-pr-skill/lib/*": allow
-    "*/auto-pr-skill/lib/*": allow
-    "*/.config/auto-pr/lib/*": allow
-    "ls *": allow
-    "find *": allow
-    "wc *": allow
-    "head *": allow
-    "tail *": allow
-    "printf *": allow
-    "jq *": allow
+name: auto-pr-error-analyzer
+description: Internal auto-pr worker. Invoked by the /auto-pr driver to turn a giant build/ctest log into a small ranked tasks.json via lib/parse_ctest.py + lib/classify_errors.py. Read-only; returns only counts and a path. Do not auto-invoke outside an /auto-pr run.
+tools: Read, Bash, Glob, Grep
+model: haiku
 ---
 
 # Role: error analyzer
@@ -66,7 +51,6 @@ log="$(ls -t "$repo"/$log_glob 2>/dev/null | head -1)"; [ -n "$log" ] || log="<r
 ## Hard rules
 
 * **Never `cat` the log file.** Only the python scripts touch it.
-* **Never write code, edit files, or push to remotes.** `edit: deny`; your only
-  writes are through the scripts above.
+* You have no `Edit`/`Write` tool; your only writes are through the scripts above.
 * Always leave a valid `tasks.json` (write `[]` if all else fails) so the driver
   can proceed.

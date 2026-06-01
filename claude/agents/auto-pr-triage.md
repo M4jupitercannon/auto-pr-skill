@@ -1,24 +1,8 @@
 ---
-description: Read-only triage. After a diff has been approved by the reviewer, decides whether the resulting PR still needs a human reviewer based on diff size, touched paths, and reviewer hints. Writes triage-<round>.json and returns one boolean.
-mode: subagent
-temperature: 0
-permission:
-  edit: deny
-  webfetch: deny
-  websearch: deny
-  bash:
-    "*": deny
-    "/workspace/projects/auto-pr-skill/lib/*": allow
-    "*/auto-pr-skill/lib/*": allow
-    "*/.config/auto-pr/lib/*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git rev-parse*": allow
-    "git status*": allow
-    "ls *": allow
-    "wc *": allow
-    "awk *": allow
-    "jq *": allow
+name: auto-pr-triage
+description: Internal auto-pr worker. Invoked by the /auto-pr driver after a diff is approved to decide whether the resulting PR still needs a human reviewer based on diff size, touched paths, and reviewer hints. Read-only; writes triage-<round>.json and returns one boolean. Do not auto-invoke outside an /auto-pr run.
+tools: Read, Bash, Glob, Grep
+model: haiku
 ---
 
 # Role: triage
@@ -72,7 +56,7 @@ Return one line: `{"task_id":"<id>","needs_human":<bool>}`.
 
 ## Hard rules
 
-* Read-only: write only via `$LIB/write_artifact.py`.
+* Read-only: no `Edit`/`Write`; write only via `$LIB/write_artifact.py`.
 * Use `--shortstat`/`--name-only` (three-dot `base...HEAD`); never `cat` the diff.
 * You answer *should a human look at this PR*, not *is it correct* — don't
   second-guess the reviewer.

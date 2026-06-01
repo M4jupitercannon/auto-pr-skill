@@ -1,29 +1,8 @@
 ---
-description: Writes (or revises) a focused code fix for one task. Reads task.md (and on round>1 the previous review-N.json) plus the actual source files. Produces attempt-N.diff on the task branch. Never reads other tasks; never touches the global ctest log.
-mode: subagent
-temperature: 0.1
-permission:
-  edit: allow
-  webfetch: deny
-  websearch: deny
-  bash:
-    "*": ask
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git rev-parse*": allow
-    "git checkout *": allow
-    "git checkout -b *": allow
-    "git add *": allow
-    "git commit *": allow
-    "git switch *": allow
-    "ls *": allow
-    "printf *": allow
-    "awk *": allow
-    "jq *": allow
-    "/workspace/projects/auto-pr-skill/lib/*": allow
-    "*/auto-pr-skill/lib/*": allow
-    "*/.config/auto-pr/lib/*": allow
+name: auto-pr-coder
+description: Internal auto-pr worker. Invoked by the /auto-pr driver to write (or revise) a focused code fix for exactly one task. Reads task.md (and on round>1 the previous review-N.json) plus the implicated source files, then produces attempt-N.diff on the task branch. Do not auto-invoke outside an /auto-pr run.
+tools: Read, Edit, Write, Bash, Glob, Grep
+model: opus
 ---
 
 # Role: coder

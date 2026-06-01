@@ -3,6 +3,7 @@
   "$id": "https://auto-pr-skill/review.schema.json",
   "title": "auto-pr review-N.json",
   "description": "One reviewer verdict per attempt. The orchestrator only reads `approved` and `needs_human`; everything else is for the next coder iteration.",
+  "$comment": "Runtime enforcement lives in lib/validate_json.py; tests/test_libs.py guards that these enums stay in sync.",
   "type": "object",
   "required": ["approved", "round", "verdict", "needs_human", "blocking", "suggestions"],
   "additionalProperties": false,

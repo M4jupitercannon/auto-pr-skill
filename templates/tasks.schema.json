@@ -3,6 +3,7 @@
   "$id": "https://auto-pr-skill/tasks.schema.json",
   "title": "auto-pr tasks.json",
   "description": "Output of lib/classify_errors.py. An ordered, prioritized list of fix tasks the orchestrator iterates over.",
+  "$comment": "Runtime enforcement lives in lib/validate_json.py; tests/test_libs.py guards the shape.",
   "type": "array",
   "items": {
     "type": "object",

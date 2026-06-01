@@ -64,12 +64,14 @@ def main() -> int:
         elif args.kind == "final-review":
             data = load_json_stdin()
             validate_final_review(data)
-            path = task_dir / "final-review.json"
+            name = f"final-review-{args.round}.json" if args.round is not None else "final-review.json"
+            path = task_dir / name
             atomic_write(path, json.dumps(data, indent=2) + "\n")
         elif args.kind == "triage":
             data = load_json_stdin()
             validate_triage(data)
-            path = task_dir / "triage.json"
+            name = f"triage-{args.round}.json" if args.round is not None else "triage.json"
+            path = task_dir / name
             atomic_write(path, json.dumps(data, indent=2) + "\n")
         elif args.kind in {"stuck", "abandon", "human-review-needed"}:
             data = load_json_stdin()
