@@ -16,7 +16,7 @@
 #   ./install-claude.sh --project P --project-only   # per-project only, no global links
 #   ./install-claude.sh --no-deepseek                # skip the DeepSeek env file
 #   ./install-claude.sh --deepseek --api-key sk-...  # write env file with your key
-#   ./install-claude.sh --persist                    # also append `source` to shell rc
+#   ./install-claude.sh --persist                    # also persist env/PATH to your shell rc
 #   ./install-claude.sh --install-cli                # npm install -g @anthropic-ai/claude-code
 #   ./install-claude.sh --uninstall                  # remove global symlinks
 #   ./install-claude.sh --uninstall --project P      # also remove project symlinks
@@ -29,7 +29,7 @@
 #   --no-deepseek        do not touch any DeepSeek env file
 #   --api-key KEY        DeepSeek API key (else $DEEPSEEK_API_KEY, else a placeholder)
 #   --env-file PATH      where to write the env file (default ~/.config/auto-pr/claude-deepseek.env)
-#   --persist            append a guarded `source <env-file>` block to your shell rc
+#   --persist            persist to your shell rc: the DeepSeek env `source` and/or the Claude CLI PATH
 #   --shell-rc PATH      shell rc to use with --persist (default: autodetect)
 #   --install-cli        run `npm install -g @anthropic-ai/claude-code` first
 #   -h, --help           show this help
@@ -256,6 +256,32 @@ ensure_local_artifact_ignores() {
 # ---------------------------------------------------------------------------
 # Claude CLI install + DeepSeek migration
 # ---------------------------------------------------------------------------
+
+# True if `npm i -g --prefix <prefix>` can actually write there: both
+# <prefix>/lib/node_modules and <prefix>/bin (or their nearest existing
+# ancestor) must be writable. npm surfaces a non-writable global prefix as a
+# confusing ENOENT on mkdir, so we probe up front instead of letting it fail.
+prefix_writable() {
+    local prefix="$1" target probe
+    [[ -n "$prefix" ]] || return 1
+    for target in "$prefix/lib/node_modules" "$prefix/bin"; do
+        probe="$target"
+        while [[ -n "$probe" && "$probe" != "/" && ! -e "$probe" ]]; do
+            probe="$(dirname "$probe")"
+        done
+        [[ -w "$probe" ]] || return 1
+    done
+    return 0
+}
+
+# True if <dir> is already present in PATH.
+on_path() {
+    case ":${PATH:-}:" in
+        *":$1:"*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
 install_cli() {
     log "Installing Claude Code CLI via npm"
     if ! command -v npm >/dev/null 2>&1; then
@@ -270,32 +296,52 @@ install_cli() {
         fi
     fi
 
+    # npm's default global prefix is frequently a root-owned dir (e.g. /usr in
+    # many dev containers). `npm i -g` then dies trying to mkdir under
+    # <prefix>/lib/node_modules -- which npm reports as a misleading ENOENT.
+    # Detect an unwritable prefix and fall back to a user-owned one (~/.local,
+    # whose bin is the conventional XDG user PATH entry) so we never need sudo.
     local npm_prefix
     npm_prefix="$(npm config get prefix 2>/dev/null || true)"
-    npm_prefix="${npm_prefix:-$HOME/.local}"
-
-    # Dev containers often ship npm with prefix=/usr (not writable). Fall back to
-    # ~/.local instead of failing with ENOENT on /usr/lib/node_modules/...
-    if [[ ! -w "$npm_prefix" ]]; then
+    if ! prefix_writable "$npm_prefix"; then
+        [[ -n "$npm_prefix" ]] && warn "npm global prefix '$npm_prefix' is not writable"
         npm_prefix="$HOME/.local"
-        warn "npm global prefix is not writable; installing under $npm_prefix"
+        warn "installing Claude Code under $npm_prefix (no sudo required)"
     fi
-    mkdir -p "$npm_prefix"/{bin,lib}
+    mkdir -p "$npm_prefix/bin" "$npm_prefix/lib/node_modules"
+
+    local bindir="$npm_prefix/bin"
+    local was_on_path=1
+    on_path "$bindir" || was_on_path=0
 
     if ! npm install -g --prefix "$npm_prefix" @anthropic-ai/claude-code; then
-        err "npm install failed. Try manually:"
-        err "  mkdir -p \"$HOME/.local/bin\" && npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code"
+        err "npm install failed. Set a user-owned global prefix and retry:"
+        err "  npm config set prefix \"$HOME/.local\""
+        err "  npm install -g @anthropic-ai/claude-code"
         err "  export PATH=\"$HOME/.local/bin:\$PATH\""
         exit 4
     fi
 
     CLAUDE_NPM_PREFIX="$npm_prefix"
-    export PATH="$npm_prefix/bin:${PATH:-}"
+    export PATH="$bindir:${PATH:-}"
 
+    local ver=""
     if command -v claude >/dev/null 2>&1; then
-        ok "Claude Code CLI installed: $(claude --version 2>/dev/null)"
-    else
-        ok "Claude Code CLI installed under $npm_prefix/bin (add to PATH: export PATH=\"$npm_prefix/bin:\$PATH\")"
+        ver="$(claude --version 2>/dev/null || true)"
+    fi
+
+    if (( was_on_path )); then
+        ok "Claude Code CLI installed${ver:+: $ver}"
+        return 0
+    fi
+
+    ok "Claude Code CLI installed under $bindir${ver:+ ($ver)}"
+    # PATH persistence: when DeepSeek is enabled the env file already carries the
+    # PATH export (sourced via --persist), so only persist directly otherwise.
+    if (( PERSIST )) && (( ! DEEPSEEK )); then
+        persist_cli_path "$bindir"
+    elif (( ! PERSIST )); then
+        warn "Add it to PATH for new shells:  export PATH=\"$bindir:\$PATH\"  (or re-run with --persist)"
     fi
 }
 
@@ -365,6 +411,24 @@ persist_env_source() {
         printf '[ -f "%s" ] && source "%s"\n' "$ENV_FILE" "$ENV_FILE"
     } >> "$rc"
     ok "appended DeepSeek env source to $rc (open a new shell or 'source $rc')"
+}
+
+# Persist a user-owned npm bin dir onto PATH in the shell rc (guarded + idempotent
+# at runtime), so the freshly installed `claude` is found in new shells.
+persist_cli_path() {
+    local bindir="$1" rc marker
+    rc="$(detect_shell_rc)"
+    marker="# auto-pr-skill: Claude Code CLI on PATH"
+    touch "$rc"
+    if grep -Fq "$marker" "$rc"; then
+        ok "shell rc already puts Claude Code on PATH ($rc)"
+        return 0
+    fi
+    {
+        printf '\n%s\n' "$marker"
+        printf 'case ":$PATH:" in *":%s:"*) ;; *) export PATH="%s:$PATH" ;; esac\n' "$bindir" "$bindir"
+    } >> "$rc"
+    ok "added $bindir to PATH in $rc (open a new shell or 'source $rc')"
 }
 
 uninstall_deepseek_env() {
