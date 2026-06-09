@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# auto-pr-skill — Claude Code installer (+ optional DeepSeek migration)
+# auto-pr-skill — Claude Code installer (+ optional model-provider env)
 #
 # Installs the auto-pr skill, the /auto-pr slash command, and the auto-pr-*
 # subagents into Claude Code's global config (~/.claude) and/or a specific
 # project's .claude/ directory. The shared lib/templates/references/profiles
 # are linked into ~/.config/auto-pr so the agents resolve them at runtime.
 #
-# It can also perform the DeepSeek "migrate to Anthropic API" setup described
-# at https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code
-# by writing a sourceable env file that points Claude Code at DeepSeek models.
+# It can also write a sourceable env file that points Claude Code at a
+# third-party Anthropic-compatible API (DeepSeek or Qwen/DashScope).
 #
 # Usage:
 #   ./install-claude.sh                              # global install + DeepSeek env file
 #   ./install-claude.sh --project /path/to/repo      # global + per-project (.claude/)
 #   ./install-claude.sh --project P --project-only   # per-project only, no global links
-#   ./install-claude.sh --no-deepseek                # skip the DeepSeek env file
-#   ./install-claude.sh --deepseek --api-key sk-...  # write env file with your key
+#   ./install-claude.sh --no-deepseek                # skip the provider env file
+#   ./install-claude.sh --deepseek --api-key sk-...  # write DeepSeek env file with your key
+#   ./install-claude.sh --qwen --api-key sk-...      # write Qwen/DashScope env file
 #   ./install-claude.sh --persist                    # also persist env/PATH to your shell rc
 #   ./install-claude.sh --install-cli                # npm install -g @anthropic-ai/claude-code
 #   ./install-claude.sh --uninstall                  # remove global symlinks
@@ -26,10 +26,11 @@
 #   --project-only       skip the global (~/.claude) install
 #   --uninstall          remove the symlinks this installer created
 #   --deepseek           write the DeepSeek env file (default: on)
-#   --no-deepseek        do not touch any DeepSeek env file
-#   --api-key KEY        DeepSeek API key (else $DEEPSEEK_API_KEY, else a placeholder)
-#   --env-file PATH      where to write the env file (default ~/.config/auto-pr/claude-deepseek.env)
-#   --persist            persist to your shell rc: the DeepSeek env `source` and/or the Claude CLI PATH
+#   --qwen               write the Qwen/DashScope env file instead of DeepSeek
+#   --no-deepseek        do not touch any provider env file
+#   --api-key KEY        provider API key (else env var for the provider, else a placeholder)
+#   --env-file PATH      where to write the env file (default depends on --deepseek/--qwen)
+#   --persist            persist to your shell rc: the provider env `source` and/or the Claude CLI PATH
 #   --shell-rc PATH      shell rc to use with --persist (default: autodetect)
 #   --install-cli        run `npm install -g @anthropic-ai/claude-code` first
 #   -h, --help           show this help
@@ -40,10 +41,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH=""
 UNINSTALL=0
 PROJECT_ONLY=0
-DEEPSEEK=1
+PROVIDER="deepseek"    # deepseek | qwen | (empty = skip env file)
 PERSIST=0
 INSTALL_CLI=0
-API_KEY="${DEEPSEEK_API_KEY:-}"
+API_KEY=""
 ENV_FILE=""
 SHELL_RC=""
 CLAUDE_NPM_PREFIX=""   # set by install_cli when --prefix is used
@@ -55,6 +56,14 @@ GLOBAL_PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/auto-pr"
 DEEPSEEK_BASE_URL="https://api.deepseek.com/anthropic"
 DEEPSEEK_MODEL="deepseek-v4-pro[1m]"
 DEEPSEEK_FAST_MODEL="deepseek-v4-flash"
+
+# Qwen/DashScope -> Claude Code (Anthropic API) model mapping.
+QWEN_BASE_URL="https://dashscope.aliyuncs.com/apps/anthropic"
+QWEN_MODEL="qwen3.7-max"
+QWEN_HAIKU_MODEL="qwen3.6-plus"
+QWEN_SONNET_MODEL="qwen3.7-plus"
+QWEN_OPUS_MODEL="qwen3.7-max"
+QWEN_SUBAGENT_MODEL="qwen3.7-max"
 
 # ---------------------------------------------------------------------------
 # Pretty output
@@ -98,11 +107,15 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --deepseek)
-            DEEPSEEK=1
+            PROVIDER="deepseek"
+            shift
+            ;;
+        --qwen)
+            PROVIDER="qwen"
             shift
             ;;
         --no-deepseek)
-            DEEPSEEK=0
+            PROVIDER=""
             shift
             ;;
         --api-key)
@@ -143,7 +156,75 @@ if (( PROJECT_ONLY )) && [[ -z "$PROJECT_PATH" ]]; then
     exit 2
 fi
 
-ENV_FILE="${ENV_FILE:-$GLOBAL_PROFILE_DIR/claude-deepseek.env}"
+configure_provider() {
+    case "$PROVIDER" in
+        "")
+            PROVIDER_LABEL=""
+            PROVIDER_ENV_FILE="$GLOBAL_PROFILE_DIR/claude-deepseek.env"
+            PROVIDER_BASE_URL=""
+            PROVIDER_MODEL=""
+            PROVIDER_HAIKU_MODEL=""
+            PROVIDER_SONNET_MODEL=""
+            PROVIDER_OPUS_MODEL=""
+            PROVIDER_SUBAGENT_MODEL=""
+            PROVIDER_PLACEHOLDER="<your API Key>"
+            PROVIDER_TOKEN_HINT=""
+            PROVIDER_DOCS=""
+            PROVIDER_MARKER=""
+            PROVIDER_EFFORT_LEVEL=""
+            ;;
+        deepseek)
+            PROVIDER_LABEL="DeepSeek"
+            PROVIDER_ENV_FILE="$GLOBAL_PROFILE_DIR/claude-deepseek.env"
+            PROVIDER_BASE_URL="$DEEPSEEK_BASE_URL"
+            PROVIDER_MODEL="$DEEPSEEK_MODEL"
+            PROVIDER_HAIKU_MODEL="$DEEPSEEK_FAST_MODEL"
+            PROVIDER_SONNET_MODEL="$DEEPSEEK_MODEL"
+            PROVIDER_OPUS_MODEL="$DEEPSEEK_MODEL"
+            PROVIDER_SUBAGENT_MODEL="$DEEPSEEK_FAST_MODEL"
+            PROVIDER_PLACEHOLDER="<your DeepSeek API Key>"
+            PROVIDER_TOKEN_HINT='$DEEPSEEK_API_KEY'
+            PROVIDER_DOCS="https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code"
+            PROVIDER_MARKER="# auto-pr-skill: DeepSeek env for Claude Code"
+            PROVIDER_EFFORT_LEVEL="max"
+            ;;
+        qwen)
+            PROVIDER_LABEL="Qwen/DashScope"
+            PROVIDER_ENV_FILE="$GLOBAL_PROFILE_DIR/claude-qwen.env"
+            PROVIDER_BASE_URL="$QWEN_BASE_URL"
+            PROVIDER_MODEL="$QWEN_MODEL"
+            PROVIDER_HAIKU_MODEL="$QWEN_HAIKU_MODEL"
+            PROVIDER_SONNET_MODEL="$QWEN_SONNET_MODEL"
+            PROVIDER_OPUS_MODEL="$QWEN_OPUS_MODEL"
+            PROVIDER_SUBAGENT_MODEL="$QWEN_SUBAGENT_MODEL"
+            PROVIDER_PLACEHOLDER="<your Qwen/DashScope API Key>"
+            PROVIDER_TOKEN_HINT='$QWEN_API_KEY / $DASHSCOPE_API_KEY'
+            PROVIDER_DOCS=""
+            PROVIDER_MARKER="# auto-pr-skill: Qwen env for Claude Code"
+            PROVIDER_EFFORT_LEVEL=""
+            ;;
+        *)
+            err "Unknown provider: $PROVIDER"
+            exit 2
+            ;;
+    esac
+}
+
+provider_api_key() {
+    if [[ -n "$API_KEY" ]]; then
+        echo "$API_KEY"
+        return 0
+    fi
+
+    case "$PROVIDER" in
+        deepseek) echo "${DEEPSEEK_API_KEY:-}" ;;
+        qwen)     echo "${QWEN_API_KEY:-${DASHSCOPE_API_KEY:-}}" ;;
+        *)        echo "" ;;
+    esac
+}
+
+configure_provider
+ENV_FILE="${ENV_FILE:-$PROVIDER_ENV_FILE}"
 
 # ---------------------------------------------------------------------------
 # Prerequisite checks
@@ -254,7 +335,7 @@ ensure_local_artifact_ignores() {
 }
 
 # ---------------------------------------------------------------------------
-# Claude CLI install + DeepSeek migration
+# Claude CLI install + provider env
 # ---------------------------------------------------------------------------
 
 # True if `npm i -g --prefix <prefix>` can actually write there: both
@@ -336,53 +417,63 @@ install_cli() {
     fi
 
     ok "Claude Code CLI installed under $bindir${ver:+ ($ver)}"
-    # PATH persistence: when DeepSeek is enabled the env file already carries the
+    # PATH persistence: when a provider env file is written it already carries the
     # PATH export (sourced via --persist), so only persist directly otherwise.
-    if (( PERSIST )) && (( ! DEEPSEEK )); then
+    if (( PERSIST )) && [[ -z "$PROVIDER" ]]; then
         persist_cli_path "$bindir"
     elif (( ! PERSIST )); then
         warn "Add it to PATH for new shells:  export PATH=\"$bindir:\$PATH\"  (or re-run with --persist)"
     fi
 }
 
-write_deepseek_env() {
-    local token="$API_KEY"
-    local placeholder=0
+append_cli_path_to_env_file() {
+    if [[ -n "$CLAUDE_NPM_PREFIX" ]]; then
+        cat >> "$ENV_FILE" <<EOF
+export PATH="$CLAUDE_NPM_PREFIX/bin:\$PATH"
+EOF
+    fi
+}
+
+write_provider_env() {
+    local token placeholder=0
+    [[ -n "$PROVIDER" ]] || return 0
+
+    token="$(provider_api_key)"
     if [[ -z "$token" ]]; then
-        token="<your DeepSeek API Key>"
+        token="$PROVIDER_PLACEHOLDER"
         placeholder=1
     fi
 
     mkdir -p "$(dirname "$ENV_FILE")"
     umask 077
     cat > "$ENV_FILE" <<EOF
-# DeepSeek -> Claude Code (Anthropic API) migration.
+# $PROVIDER_LABEL -> Claude Code (Anthropic API) migration.
 # Source this file before running 'claude':  source "$ENV_FILE"
-# Docs: https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code
+$( [[ -n "$PROVIDER_DOCS" ]] && printf '# Docs: %s\n' "$PROVIDER_DOCS" )
 #
 # Model mapping used by Claude Code:
-#   opus  -> $DEEPSEEK_MODEL          (orchestrator / main session, 1M context)
-#   sonnet-> $DEEPSEEK_MODEL
-#   haiku -> $DEEPSEEK_FAST_MODEL     (cheap/fast)
-#   subagents -> $DEEPSEEK_FAST_MODEL (auto-pr-* workers)
-export ANTHROPIC_BASE_URL="$DEEPSEEK_BASE_URL"
+#   opus  -> $PROVIDER_OPUS_MODEL
+#   sonnet-> $PROVIDER_SONNET_MODEL
+#   haiku -> $PROVIDER_HAIKU_MODEL
+#   subagents -> $PROVIDER_SUBAGENT_MODEL (auto-pr-* workers)
+export ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$token"
-export ANTHROPIC_MODEL="$DEEPSEEK_MODEL"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="$DEEPSEEK_MODEL"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="$DEEPSEEK_MODEL"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="$DEEPSEEK_FAST_MODEL"
-export CLAUDE_CODE_SUBAGENT_MODEL="$DEEPSEEK_FAST_MODEL"
-export CLAUDE_CODE_EFFORT_LEVEL="max"
+export ANTHROPIC_MODEL="$PROVIDER_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$PROVIDER_HAIKU_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$PROVIDER_SONNET_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$PROVIDER_OPUS_MODEL"
+export CLAUDE_CODE_SUBAGENT_MODEL="$PROVIDER_SUBAGENT_MODEL"
 EOF
-    if [[ -n "$CLAUDE_NPM_PREFIX" ]]; then
-        cat >> "$ENV_FILE" <<EOF
-export PATH="$CLAUDE_NPM_PREFIX/bin:\$PATH"
-EOF
+    if [[ -n "$PROVIDER_EFFORT_LEVEL" ]]; then
+        printf 'export CLAUDE_CODE_EFFORT_LEVEL="%s"\n' "$PROVIDER_EFFORT_LEVEL" >> "$ENV_FILE"
     fi
+    append_cli_path_to_env_file
     chmod 600 "$ENV_FILE"
-    ok "wrote DeepSeek env file: $ENV_FILE"
+    ok "wrote $PROVIDER_LABEL env file: $ENV_FILE"
     if (( placeholder )); then
-        warn "No API key provided. Edit $ENV_FILE and replace '<your DeepSeek API Key>' (or re-run with --api-key)."
+        local hint=""
+        [[ -n "$PROVIDER_TOKEN_HINT" ]] && hint=", or set $PROVIDER_TOKEN_HINT"
+        warn "No API key provided. Edit $ENV_FILE and replace '$PROVIDER_PLACEHOLDER' (or re-run with --api-key$hint)."
     fi
 }
 
@@ -398,19 +489,18 @@ detect_shell_rc() {
 }
 
 persist_env_source() {
-    local rc marker
+    local rc
     rc="$(detect_shell_rc)"
-    marker="# auto-pr-skill: DeepSeek env for Claude Code"
     touch "$rc"
-    if grep -Fq "$marker" "$rc"; then
-        ok "shell rc already sources the DeepSeek env ($rc)"
+    if grep -Fq "$PROVIDER_MARKER" "$rc"; then
+        ok "shell rc already sources the $PROVIDER_LABEL env ($rc)"
         return 0
     fi
     {
-        printf '\n%s\n' "$marker"
+        printf '\n%s\n' "$PROVIDER_MARKER"
         printf '[ -f "%s" ] && source "%s"\n' "$ENV_FILE" "$ENV_FILE"
     } >> "$rc"
-    ok "appended DeepSeek env source to $rc (open a new shell or 'source $rc')"
+    ok "appended $PROVIDER_LABEL env source to $rc (open a new shell or 'source $rc')"
 }
 
 # Persist a user-owned npm bin dir onto PATH in the shell rc (guarded + idempotent
@@ -431,21 +521,40 @@ persist_cli_path() {
     ok "added $bindir to PATH in $rc (open a new shell or 'source $rc')"
 }
 
-uninstall_deepseek_env() {
-    if [[ -f "$ENV_FILE" ]]; then
-        rm -f "$ENV_FILE"
-        ok "removed $ENV_FILE"
-    fi
-    local rc marker
+uninstall_provider_env() {
+    local f rc tmp marker
+    for f in \
+        "$GLOBAL_PROFILE_DIR/claude-deepseek.env" \
+        "$GLOBAL_PROFILE_DIR/claude-qwen.env" \
+        "$ENV_FILE"; do
+        [[ -f "$f" ]] || continue
+        rm -f "$f"
+        ok "removed $f"
+    done
+
     rc="$(detect_shell_rc)"
-    marker="# auto-pr-skill: DeepSeek env for Claude Code"
-    if [[ -f "$rc" ]] && grep -Fq "$marker" "$rc"; then
-        local tmp
+    [[ -f "$rc" ]] || return 0
+
+    for marker in \
+        "# auto-pr-skill: DeepSeek env for Claude Code" \
+        "# auto-pr-skill: Qwen env for Claude Code"; do
+        grep -Fq "$marker" "$rc" || continue
         tmp="$(mktemp)"
-        grep -vF "$marker" "$rc" | grep -vF "source \"$ENV_FILE\"" > "$tmp" || true
+        grep -vF "$marker" "$rc" > "$tmp" || true
         mv "$tmp" "$rc"
-        ok "removed DeepSeek env source from $rc"
-    fi
+        ok "removed provider env marker from $rc"
+    done
+
+    for f in \
+        "$GLOBAL_PROFILE_DIR/claude-deepseek.env" \
+        "$GLOBAL_PROFILE_DIR/claude-qwen.env" \
+        "$ENV_FILE"; do
+        grep -Fq "source \"$f\"" "$rc" || continue
+        tmp="$(mktemp)"
+        grep -vF "[ -f \"$f\" ] && source \"$f\"" "$rc" > "$tmp" || true
+        mv "$tmp" "$rc"
+        ok "removed provider env source for $f from $rc"
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -575,7 +684,7 @@ if (( UNINSTALL )); then
         uninstall_global
     fi
     [[ -n "$PROJECT_PATH" ]] && uninstall_project "$PROJECT_PATH"
-    (( DEEPSEEK )) && uninstall_deepseek_env
+    uninstall_provider_env
     ok "Done."
     exit 0
 fi
@@ -587,8 +696,8 @@ if (( ! PROJECT_ONLY )); then
 fi
 [[ -n "$PROJECT_PATH" ]] && install_project "$PROJECT_PATH"
 
-if (( DEEPSEEK )); then
-    write_deepseek_env
+if [[ -n "$PROVIDER" ]]; then
+    write_provider_env
     (( PERSIST )) && persist_env_source
 fi
 
@@ -598,9 +707,9 @@ ${GREEN}auto-pr-skill installed for Claude Code.${RESET}
 
 EOF
 
-if (( DEEPSEEK )); then
+if [[ -n "$PROVIDER" ]]; then
 cat <<EOF
-${BOLD}DeepSeek migration:${RESET} point Claude Code at DeepSeek models with:
+${BOLD}$PROVIDER_LABEL migration:${RESET} point Claude Code at $PROVIDER_LABEL models with:
 
     ${BOLD}source "$ENV_FILE"${RESET}
 $( (( PERSIST )) && printf '    (already added to your shell rc; open a new shell to apply)\n' )
